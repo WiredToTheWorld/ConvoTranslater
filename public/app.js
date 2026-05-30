@@ -30,8 +30,17 @@ const languages = {
   he: 'Hebrew', hi: 'Hindi', hu: 'Hungarian', id: 'Indonesian',
   it: 'Italian', ja: 'Japanese', ko: 'Korean', no: 'Norwegian',
   pl: 'Polish', pt: 'Portuguese', ro: 'Romanian', ru: 'Russian',
-  es: 'Spanish', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
+  sk: 'Slovak', es: 'Spanish', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
   uk: 'Ukrainian', vi: 'Vietnamese',
+};
+
+// Maps language code → ISO 3166-1 alpha-2 country code for flagcdn.com
+const FLAG_COUNTRY = {
+  ar: 'sa', zh: 'cn', cs: 'cz', da: 'dk', nl: 'nl', fi: 'fi',
+  fr: 'fr', de: 'de', el: 'gr', he: 'il', hi: 'in', hu: 'hu',
+  id: 'id', it: 'it', ja: 'jp', ko: 'kr', no: 'no', pl: 'pl',
+  pt: 'pt', ro: 'ro', ru: 'ru', sk: 'sk', es: 'es', sv: 'se',
+  th: 'th', tr: 'tr', uk: 'ua', vi: 'vn',
 };
 
 const SPEECH_LANG = {
@@ -40,7 +49,7 @@ const SPEECH_LANG = {
   nl: 'nl-NL', fi: 'fi-FI', fr: 'fr-FR', de: 'de-DE', el: 'el-GR',
   he: 'he-IL', hi: 'hi-IN', hu: 'hu-HU', id: 'id-ID',
   it: 'it-IT', ja: 'ja-JP', ko: 'ko-KR', no: 'nb-NO',
-  pl: 'pl-PL', pt: 'pt-BR', ro: 'ro-RO', ru: 'ru-RU',
+  pl: 'pl-PL', pt: 'pt-BR', ro: 'ro-RO', ru: 'ru-RU', sk: 'sk-SK',
   es: 'es-ES', sv: 'sv-SE', th: 'th-TH', tr: 'tr-TR',
   uk: 'uk-UA', vi: 'vi-VN',
 };
@@ -81,6 +90,14 @@ targetLangSelect.addEventListener('change', () => {
   btnAutoA.disabled  = !code;
   btnAutoB.disabled  = !code;
   setStatus(code ? `Ready — ${name} selected` : 'Select a language to begin', null);
+  const countryCode = FLAG_COUNTRY[code];
+  if (countryCode) {
+    conversationEl.style.setProperty('--flag-url', `url('https://flagcdn.com/w640/${countryCode}.png')`);
+    conversationEl.classList.add('has-flag');
+  } else {
+    conversationEl.style.removeProperty('--flag-url');
+    conversationEl.classList.remove('has-flag');
+  }
   showEmpty();
 });
 

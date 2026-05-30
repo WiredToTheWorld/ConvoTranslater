@@ -117,7 +117,29 @@ select:focus { border-color: var(--accent-b); }
   flex-direction: column;
   gap: 12px;
   margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
 }
+
+/* Flag background — rotated 90° to fill portrait area */
+#conversation::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 200%;
+  background-image: var(--flag-url);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: translate(-50%, -50%) rotate(90deg);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+#conversation.has-flag::before { opacity: 0.08; }
 
 .empty-state {
   text-align: center;
@@ -125,6 +147,8 @@ select:focus { border-color: var(--accent-b); }
   padding: 48px 20px;
   font-size: 0.9rem;
   line-height: 1.6;
+  position: relative;
+  z-index: 1;
 }
 .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
 
@@ -133,6 +157,8 @@ select:focus { border-color: var(--accent-b); }
   flex-direction: column;
   gap: 6px;
   animation: fadeIn 0.25s ease;
+  position: relative;
+  z-index: 1;
 }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
 
