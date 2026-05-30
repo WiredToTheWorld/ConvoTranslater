@@ -34,7 +34,6 @@ const languages = {
   uk: 'Ukrainian', vi: 'Vietnamese',
 };
 
-// Full BCP-47 tags iOS needs for both recognition and TTS
 const SPEECH_LANG = {
   'en-US': 'en-US',
   ar: 'ar-SA', zh: 'zh-CN', cs: 'cs-CZ', da: 'da-DK',
@@ -47,7 +46,7 @@ const SPEECH_LANG = {
 };
 const speechLang = (code) => SPEECH_LANG[code] || code;
 
-let mode        = 'manual'; // 'manual' | 'auto'
+let mode        = 'manual';
 let autoActive  = false;
 let isBusy      = false;
 let recognition = null;
@@ -75,14 +74,12 @@ targetLangSelect.innerHTML = '<option value="">— choose language —</option>'
 targetLangSelect.addEventListener('change', () => {
   const code = targetLangSelect.value;
   const name = languages[code] || '';
-
-  btnBLabel.textContent      = code ? `Speak in ${name}` : 'Speak in...';
-  btnAutoBLabel.textContent  = code ? `${name} first`    : 'Start with...';
+  btnBLabel.textContent     = code ? `Speak in ${name}` : 'Speak in...';
+  btnAutoBLabel.textContent = code ? `${name} first`    : 'Start with...';
   btnB.disabled      = !code;
   btnA.disabled      = !code;
   btnAutoA.disabled  = !code;
   btnAutoB.disabled  = !code;
-
   setStatus(code ? `Ready — ${name} selected` : 'Select a language to begin', null);
   showEmpty();
 });
@@ -94,12 +91,8 @@ function switchMode(newMode) {
   modeAutoBtn.classList.toggle('mode-active', mode === 'auto');
   manualButtons.classList.toggle('hidden', mode !== 'manual');
   autoButtons.classList.toggle('hidden', mode !== 'auto');
-
-  if (mode === 'manual') {
-    stopAutoLoop();
-  }
+  if (mode === 'manual') stopAutoLoop();
 }
-
 modeManualBtn.addEventListener('click', () => switchMode('manual'));
 modeAutoBtn.addEventListener('click', () => switchMode('auto'));
 
@@ -116,22 +109,16 @@ showEmpty();
 function addMessage({ speaker, loading }) {
   const empty = conversationEl.querySelector('.empty-state');
   if (empty) empty.remove();
-
   const group  = document.createElement('div');
   group.className = `message-group speaker-${speaker}`;
-
   const tag    = document.createElement('div');
   tag.className = 'speaker-tag';
   tag.textContent = speaker === 'a'
     ? 'Speaker A (English)'
     : `Speaker B (${languages[targetLangSelect.value] || ''})`;
-
   const bubble = document.createElement('div');
   bubble.className = `bubble${loading ? ' loading' : ''}`;
-  if (loading) {
-    bubble.innerHTML = `<div class="original"><div class="dots"><span></span><span></span><span></span></div></div>`;
-  }
-
+  if (loading) bubble.innerHTML = `<div class="original"><div class="dots"><span></span><span></span><span></span></div></div>`;
   group.appendChild(tag);
   group.appendChild(bubble);
   conversationEl.appendChild(group);
@@ -157,7 +144,6 @@ function setStatus(msg, type) {
   statusText.textContent = msg;
   pulse.className = type ?? 'hidden';
 }
-
 function setManualBusy(busy) {
   isBusy = busy;
   const hasLang = !!targetLangSelect.value;
@@ -165,8 +151,37 @@ function setManualBusy(busy) {
   btnB.disabled = busy || !hasLang;
 }
 
+// ── Shared AudioContext ───────────────────────────────────────────────────────
+// We never call close() — iOS takes 15-20 s to release the audio session after
+// close(). suspend()/resume() on a single long-lived context drops that to ~200 ms.
+let sharedAC = null;
+
+function initAC() {
+  if (sharedAC && sharedAC.state !== 'closed') return;
+  try { sharedAC = new (window.AudioContext || window.webkitAudioContext)(); }
+  catch (_) { sharedAC = null; }
+}
+
+async function activateSpeaker() {
+  if (!sharedAC) return;
+  try {
+    await sharedAC.resume();
+    // Play a 1-sample silent buffer to route iOS audio to the speaker
+    const buf = sharedAC.createBuffer(1, 1, sharedAC.sampleRate);
+    const src = sharedAC.createBufferSource();
+    src.buffer = buf;
+    src.connect(sharedAC.destination);
+    src.start(0);
+  } catch (_) {}
+}
+
+async function suspendSpeaker() {
+  if (sharedAC && sharedAC.state === 'running') {
+    await sharedAC.suspend().catch(() => {});
+  }
+}
+
 // ── Speech recognition ────────────────────────────────────────────────────────
-// callbacks: { onReady() — mic actually open; onSpeech() — speech detected }
 function startListening(lang, callbacks = {}) {
   return new Promise((resolve, reject) => {
     if (!SpeechRecognition) return reject(new Error('No speech recognition'));
@@ -181,19 +196,17 @@ function startListening(lang, callbacks = {}) {
     let settled = false;
     const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
 
-    // iOS sometimes silently fails to open the mic (audio session still in
-    // playback mode). onaudiostart fires only when the mic actually activates;
-    // if it doesn't within 5 s, reject so the caller can retry silently.
-    const audioStartWatchdog = setTimeout(() => {
+    // If onaudiostart doesn't fire within 5 s the mic is still blocked
+    const watchdog = setTimeout(() => {
       settle(reject, new Error('mic-unavailable'));
       try { r.stop(); } catch (_) {}
     }, 5000);
 
-    r.onaudiostart  = () => { clearTimeout(audioStartWatchdog); callbacks.onReady?.(); };
+    r.onaudiostart  = () => { clearTimeout(watchdog); callbacks.onReady?.(); };
     r.onspeechstart = () => callbacks.onSpeech?.();
     r.onresult = (e) => settle(resolve, e.results[0][0].transcript.trim());
     r.onerror  = (e) => {
-      clearTimeout(audioStartWatchdog);
+      clearTimeout(watchdog);
       if (e.error === 'aborted')          settle(reject, new Error('stopped'));
       else if (e.error === 'no-speech')   settle(reject, new Error('No speech detected — try again.'));
       else if (e.error === 'not-allowed') settle(reject, new Error('Microphone access denied.'));
@@ -201,21 +214,18 @@ function startListening(lang, callbacks = {}) {
                                           settle(reject, new Error('mic-unavailable'));
       else settle(reject, new Error(`Speech error: ${e.error}`));
     };
-    r.onend = () => { clearTimeout(audioStartWatchdog); recognition = null; settle(reject, new Error('stopped')); };
+    r.onend = () => { clearTimeout(watchdog); recognition = null; settle(reject, new Error('stopped')); };
     r.start();
   });
 }
 
 // ── Text-to-speech ────────────────────────────────────────────────────────────
-
-// Called synchronously inside button click handlers (before any await) so that
-// iOS registers our intent to use speech synthesis within the user gesture.
 function primeTTS() {
+  initAC(); // must be called within a user gesture so iOS allows AudioContext
   try {
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(' '); // non-breaking space
-    u.volume = 0;
-    u.rate = 10;
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0; u.rate = 10;
     window.speechSynthesis.speak(u);
   } catch (_) {}
 }
@@ -224,78 +234,42 @@ function speak(text, lang) {
   return new Promise((resolve) => {
     window.speechSynthesis.cancel();
 
-    // iOS keeps the audio session in "voice input" mode after mic use, which
-    // silently routes TTS output nowhere. An AudioContext buffer forces a
-    // switch to playback mode. We hold it open until TTS finishes, then close
-    // it with a 300ms grace period so iOS can release the session before the
-    // mic tries to open on the next turn.
-    let ac = null;
-    try {
-      ac = new (window.AudioContext || window.webkitAudioContext)();
-      const buf = ac.createBuffer(1, 1, ac.sampleRate);
-      const src = ac.createBufferSource();
-      src.buffer = buf;
-      src.connect(ac.destination);
-      src.start(0);
-      ac.resume();
-    } catch (_) { ac = null; }
+    // Resume the shared AudioContext (created in primeTTS) to switch iOS audio
+    // routing to the speaker. suspend() at the end releases the hold in ~200 ms
+    // instead of the 15-20 s that close() takes.
+    activateSpeaker().then(() => {
+      setTimeout(() => {
+        const u = new SpeechSynthesisUtterance(text);
+        const base = lang.split('-')[0];
+        const match = voices.find(v => v.lang === lang) ||
+                      voices.find(v => v.lang.startsWith(lang)) ||
+                      voices.find(v => v.lang.startsWith(base));
+        if (match) u.voice = match;
+        u.lang = lang;
+        u.rate = 0.95;
 
-    let acClosed = false;
-    const closeAC = () => {
-      if (ac && !acClosed) {
-        acClosed = true;
-        ac.close().catch(() => {});
-        ac = null;
-      }
-    };
+        const nudge = setInterval(() => {
+          if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+        }, 100);
 
-    setTimeout(() => {
-      const u = new SpeechSynthesisUtterance(text);
-      const base = lang.split('-')[0];
-      const match = voices.find(v => v.lang === lang) ||
-                    voices.find(v => v.lang.startsWith(lang)) ||
-                    voices.find(v => v.lang.startsWith(base));
-      if (match) u.voice = match;
-      u.lang = lang;
-      u.rate = 0.95;
+        const bail = setTimeout(() => {
+          clearInterval(nudge);
+          suspendSpeaker();
+          resolve();
+        }, 4000 + text.length * 70);
 
-      // Close AudioContext the moment TTS actually starts — gives iOS the full
-      // duration of the utterance to release the playback session before the
-      // mic needs to open. Keep it as fallback in done() too.
-      u.onstart = () => closeAC();
-
-      const nudge = setInterval(() => {
-        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-      }, 100);
-
-      const bail = setTimeout(() => {
-        clearInterval(nudge);
-        closeAC();
-        resolve();
-      }, 4000 + text.length * 70);
-
-      const done = () => {
-        clearInterval(nudge);
-        clearTimeout(bail);
-        closeAC();
-        resolve();
-      };
-      u.onend   = done;
-      u.onerror = done;
-      window.speechSynthesis.speak(u);
-    }, 500);
+        const done = () => {
+          clearInterval(nudge);
+          clearTimeout(bail);
+          suspendSpeaker();
+          resolve();
+        };
+        u.onend   = done;
+        u.onerror = done;
+        window.speechSynthesis.speak(u);
+      }, 400);
+    });
   });
-}
-
-// Explicitly switch iOS audio session from playback → record mode by briefly
-// opening the mic via getUserMedia. This is far faster than waiting for iOS
-// to do it passively (which can take 15-20 s after AudioContext use).
-async function forceRecordMode() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach(t => t.stop());
-    await delay(200);
-  } catch (_) {}
 }
 
 // ── Translation API ───────────────────────────────────────────────────────────
@@ -314,27 +288,28 @@ async function translate(text, fromLang, toLang) {
   return (await res.json()).translated;
 }
 
-// ── Core turn (shared by both modes) ─────────────────────────────────────────
+// ── Core turn ─────────────────────────────────────────────────────────────────
 async function executeTurn(speaker) {
   const targetCode = targetLangSelect.value;
   if (!targetCode) return false;
 
-  const isA          = speaker === 'a';
-  const listenLang   = speechLang(isA ? 'en-US' : targetCode);
-  const speakLang    = speechLang(isA ? targetCode : 'en-US');
-  const translateTo  = isA ? targetCode : 'en-US';
-  const speakerName  = isA ? 'English' : languages[targetCode];
+  const isA         = speaker === 'a';
+  const listenLang  = speechLang(isA ? 'en-US' : targetCode);
+  const speakLang   = speechLang(isA ? targetCode : 'en-US');
+  const translateTo = isA ? targetCode : 'en-US';
+  const speakerName = isA ? 'English' : languages[targetCode];
 
   try {
-    // Explicitly switch iOS audio session from playback → record mode.
-    // Without this, iOS can take 15-20s to release the session on its own.
+    // Suspend AudioContext first so iOS can switch session to record mode.
+    // With suspend() this takes ~200 ms; close() would have taken 15-20 s.
     setStatus('Preparing mic…', null);
-    await forceRecordMode();
+    await suspendSpeaker();
+    await delay(250);
 
     let spoken = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        if (attempt > 0) { setStatus('Preparing mic…', null); await delay(500); }
+        if (attempt > 0) { setStatus('Preparing mic…', null); await delay(600); }
         spoken = await startListening(listenLang, {
           onReady:  () => setStatus(`Listening for ${speakerName}…`, ''),
           onSpeech: () => setStatus('Got you, processing…', 'translating'),
@@ -348,7 +323,6 @@ async function executeTurn(speaker) {
 
     setStatus('Translating…', 'translating');
     const { bubble } = addMessage({ speaker, loading: true });
-
     const translated = await translate(spoken, listenLang, translateTo);
     updateMessage(bubble, { original: spoken, translation: translated, speaker });
 
@@ -357,9 +331,7 @@ async function executeTurn(speaker) {
 
     return true;
   } catch (err) {
-    if (err.message !== 'stopped') {
-      setStatus(err.message || 'Something went wrong', null);
-    }
+    if (err.message !== 'stopped') setStatus(err.message || 'Something went wrong', null);
     return false;
   }
 }
@@ -367,7 +339,7 @@ async function executeTurn(speaker) {
 // ── Manual mode ───────────────────────────────────────────────────────────────
 async function handleManualTurn(speaker) {
   if (isBusy || mode !== 'manual') return;
-  primeTTS(); // iOS: register TTS intent within user gesture before any await
+  primeTTS();
   setManualBusy(true);
   const btn = speaker === 'a' ? btnA : btnB;
   btn.classList.add('active');
@@ -387,15 +359,13 @@ btnB.addEventListener('click', () => handleManualTurn('b'));
 function setTurnIndicator(speaker) {
   turnA.classList.toggle('hidden', speaker !== 'a');
   turnB.classList.toggle('hidden', speaker !== 'b');
-  const name = languages[targetLangSelect.value] || '';
-  turnB.textContent = `${name} listening`;
+  turnB.textContent = `${languages[targetLangSelect.value] || ''} listening`;
 }
 
 async function startAutoLoop(firstSpeaker) {
   if (!targetLangSelect.value || autoActive) return;
-  primeTTS(); // iOS: register TTS intent within user gesture before any await
+  primeTTS();
   autoActive = true;
-
   autoStart.classList.add('hidden');
   autoRunning.classList.remove('hidden');
 
@@ -404,18 +374,9 @@ async function startAutoLoop(firstSpeaker) {
     setTurnIndicator(speaker);
     const ok = await executeTurn(speaker);
     if (!autoActive) break;
-
-    if (!ok) {
-      // Retry same speaker after brief pause
-      await delay(900);
-      continue;
-    }
-
+    if (!ok) { await delay(900); continue; }
     speaker = speaker === 'a' ? 'b' : 'a';
-    if (autoActive) {
-      setStatus('Next speaker…', null);
-      await delay(800);
-    }
+    if (autoActive) { setStatus('Next speaker…', null); await delay(800); }
   }
 
   autoStart.classList.remove('hidden');
@@ -427,6 +388,7 @@ function stopAutoLoop() {
   if (!autoActive) return;
   autoActive = false;
   window.speechSynthesis.cancel();
+  suspendSpeaker();
   if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
 }
 
@@ -440,6 +402,7 @@ btnStop.addEventListener('click', stopAutoLoop);
 btnClear.addEventListener('click', () => {
   stopAutoLoop();
   window.speechSynthesis.cancel();
+  suspendSpeaker();
   if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
   isBusy = false;
   btnA.classList.remove('active');
