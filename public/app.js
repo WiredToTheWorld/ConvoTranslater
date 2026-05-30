@@ -182,11 +182,11 @@ function startListening(lang) {
 
     // iOS sometimes silently fails to open the mic (audio session still in
     // playback mode). onaudiostart fires only when the mic actually activates;
-    // if it doesn't within 3 s we surface an error instead of hanging forever.
+    // if it doesn't within 5 s, reject so the caller can retry silently.
     const audioStartWatchdog = setTimeout(() => {
-      settle(reject, new Error('Microphone unavailable — tap to retry.'));
+      settle(reject, new Error('mic-unavailable'));
       try { r.stop(); } catch (_) {}
-    }, 3000);
+    }, 5000);
 
     r.onaudiostart = () => clearTimeout(audioStartWatchdog);
     r.onresult = (e) => settle(resolve, e.results[0][0].transcript.trim());
@@ -257,15 +257,15 @@ function speak(text, lang) {
       const bail = setTimeout(() => {
         clearInterval(nudge);
         closeAC();
-        setTimeout(resolve, 300);
+        setTimeout(resolve, 600);
       }, 4000 + text.length * 70);
 
       const done = () => {
         clearInterval(nudge);
         clearTimeout(bail);
         closeAC();
-        // 300ms lets iOS fully release the playback session before the mic opens
-        setTimeout(resolve, 300);
+        // 600ms lets iOS fully release the playback session before the mic opens
+        setTimeout(resolve, 600);
       };
       u.onend   = done;
       u.onerror = done;
@@ -302,9 +302,23 @@ async function executeTurn(speaker) {
   const speakerName  = isA ? 'English' : languages[targetCode];
 
   try {
-    setStatus(`Listening for ${speakerName}…`, '');  // red pulse
-    const spoken = await startListening(listenLang);
-    if (!spoken) throw new Error('Nothing heard');
+    // iOS audio session switching is slow — retry mic start silently
+    let spoken = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        if (attempt > 0) {
+          setStatus('Preparing mic…', null);
+          await delay(700);
+        }
+        setStatus(`Listening for ${speakerName}…`, '');
+        spoken = await startListening(listenLang);
+        break;
+      } catch (err) {
+        if (err.message !== 'mic-unavailable') throw err;
+        // mic not ready yet — loop will retry
+      }
+    }
+    if (!spoken) throw new Error('Microphone unavailable — please try again.');
 
     setStatus('Translating…', 'translating');
     const { bubble } = addMessage({ speaker, loading: true });
@@ -375,7 +389,7 @@ async function startAutoLoop(firstSpeaker) {
     // Pause between turns — iOS needs time to release playback session for mic
     if (autoActive) {
       setStatus('Next speaker…', null);
-      await delay(1200);
+      await delay(1800);
     }
   }
 
