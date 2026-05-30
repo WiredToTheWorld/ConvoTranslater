@@ -34,6 +34,19 @@ const languages = {
   uk: 'Ukrainian', vi: 'Vietnamese',
 };
 
+// Full BCP-47 tags iOS needs for both recognition and TTS
+const SPEECH_LANG = {
+  'en-US': 'en-US',
+  ar: 'ar-SA', zh: 'zh-CN', cs: 'cs-CZ', da: 'da-DK',
+  nl: 'nl-NL', fi: 'fi-FI', fr: 'fr-FR', de: 'de-DE', el: 'el-GR',
+  he: 'he-IL', hi: 'hi-IN', hu: 'hu-HU', id: 'id-ID',
+  it: 'it-IT', ja: 'ja-JP', ko: 'ko-KR', no: 'nb-NO',
+  pl: 'pl-PL', pt: 'pt-BR', ro: 'ro-RO', ru: 'ru-RU',
+  es: 'es-ES', sv: 'sv-SE', th: 'th-TH', tr: 'tr-TR',
+  uk: 'uk-UA', vi: 'vi-VN',
+};
+const speechLang = (code) => SPEECH_LANG[code] || code;
+
 let mode        = 'manual'; // 'manual' | 'auto'
 let autoActive  = false;
 let isBusy      = false;
@@ -183,15 +196,34 @@ function startListening(lang) {
 function speak(text, lang) {
   return new Promise((resolve) => {
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    const match = voices.find(v => v.lang.startsWith(lang)) ||
-                  voices.find(v => v.lang.startsWith(lang.split('-')[0]));
-    if (match) u.voice = match;
-    u.lang = lang;
-    u.rate = 0.95;
-    u.onend   = () => resolve();
-    u.onerror = () => resolve();
-    window.speechSynthesis.speak(u);
+
+    // iOS: after mic use the audio session needs a moment to hand off to TTS
+    setTimeout(() => {
+      const u = new SpeechSynthesisUtterance(text);
+      const base = lang.split('-')[0];
+      const match = voices.find(v => v.lang === lang) ||
+                    voices.find(v => v.lang.startsWith(lang)) ||
+                    voices.find(v => v.lang.startsWith(base));
+      if (match) u.voice = match;
+      u.lang = lang;
+      u.rate = 0.95;
+
+      // iOS silently pauses speechSynthesis mid-utterance; nudge it awake
+      const nudge = setInterval(() => {
+        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+      }, 100);
+
+      // iOS sometimes never fires onend at all; bail after a generous timeout
+      const bail = setTimeout(() => {
+        clearInterval(nudge);
+        resolve();
+      }, 4000 + text.length * 70);
+
+      const done = () => { clearInterval(nudge); clearTimeout(bail); resolve(); };
+      u.onend   = done;
+      u.onerror = done;
+      window.speechSynthesis.speak(u);
+    }, 250);
   });
 }
 
@@ -217,8 +249,8 @@ async function executeTurn(speaker) {
   if (!targetCode) return false;
 
   const isA          = speaker === 'a';
-  const listenLang   = isA ? 'en-US' : targetCode;
-  const speakLang    = isA ? targetCode : 'en-US';
+  const listenLang   = speechLang(isA ? 'en-US' : targetCode);
+  const speakLang    = speechLang(isA ? targetCode : 'en-US');
   const translateTo  = isA ? targetCode : 'en-US';
   const speakerName  = isA ? 'English' : languages[targetCode];
 
