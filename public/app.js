@@ -166,7 +166,8 @@ function setManualBusy(busy) {
 }
 
 // ── Speech recognition ────────────────────────────────────────────────────────
-function startListening(lang) {
+// callbacks: { onReady() — mic actually open; onSpeech() — speech detected }
+function startListening(lang, callbacks = {}) {
   return new Promise((resolve, reject) => {
     if (!SpeechRecognition) return reject(new Error('No speech recognition'));
 
@@ -188,7 +189,8 @@ function startListening(lang) {
       try { r.stop(); } catch (_) {}
     }, 5000);
 
-    r.onaudiostart = () => clearTimeout(audioStartWatchdog);
+    r.onaudiostart  = () => { clearTimeout(audioStartWatchdog); callbacks.onReady?.(); };
+    r.onspeechstart = () => callbacks.onSpeech?.();
     r.onresult = (e) => settle(resolve, e.results[0][0].transcript.trim());
     r.onerror  = (e) => {
       clearTimeout(audioStartWatchdog);
@@ -304,20 +306,21 @@ async function executeTurn(speaker) {
   const speakerName  = isA ? 'English' : languages[targetCode];
 
   try {
-    // iOS audio session switching is slow — retry mic start silently
+    // iOS audio session switching is slow — retry mic start silently.
+    // Only show "Listening" once onaudiostart fires so the user knows
+    // not to speak before the mic is actually open.
     let spoken = null;
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        if (attempt > 0) {
-          setStatus('Preparing mic…', null);
-          await delay(700);
-        }
-        setStatus(`Listening for ${speakerName}…`, '');
-        spoken = await startListening(listenLang);
+        setStatus('Preparing mic…', null);
+        if (attempt > 0) await delay(700);
+        spoken = await startListening(listenLang, {
+          onReady:  () => setStatus(`Listening for ${speakerName}…`, ''),
+          onSpeech: () => setStatus('Got you, processing…', 'translating'),
+        });
         break;
       } catch (err) {
         if (err.message !== 'mic-unavailable') throw err;
-        // mic not ready yet — loop will retry
       }
     }
     if (!spoken) throw new Error('Microphone unavailable — please try again.');
