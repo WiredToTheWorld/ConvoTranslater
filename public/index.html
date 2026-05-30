@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ConvoTranslater</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>ConvoTranslater</h1>
+      <p class="subtitle">Real-time bilingual conversation</p>
+    </header>
+
+    <div id="setup-panel">
+      <div class="setup-row">
+        <div class="lang-block">
+          <span class="lang-label">Speaker A</span>
+          <div class="lang-fixed">English</div>
+        </div>
+        <div class="swap-arrow">&#8646;</div>
+        <div class="lang-block">
+          <span class="lang-label">Speaker B</span>
+          <select id="target-lang">
+            <option value="">Loading languages...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="conversation"></div>
+
+    <div id="controls">
+      <div id="status-bar">
+        <span id="status-text">Select a language to begin</span>
+        <div id="pulse" class="hidden"></div>
+      </div>
+      <div id="buttons">
+        <button id="btn-a" class="speak-btn btn-english" disabled>
+          <span class="btn-icon">&#127908;</span>
+          <span class="btn-label">Speak in English</span>
+        </button>
+        <button id="btn-b" class="speak-btn btn-foreign" disabled>
+          <span class="btn-icon">&#127908;</span>
+          <span class="btn-label" id="btn-b-label">Speak in...</span>
+        </button>
+      </div>
+      <button id="btn-clear" class="clear-btn">Clear conversation</button>
+    </div>
+
+    <div id="browser-warning" class="hidden">
+      <p>Your browser does not support the Web Speech API. Please use Chrome or Edge for voice features.</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
