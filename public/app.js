@@ -240,7 +240,14 @@ function speak(text, lang) {
       ac.resume();
     } catch (_) { ac = null; }
 
-    const closeAC = () => { if (ac) { ac.close().catch(() => {}); ac = null; } };
+    let acClosed = false;
+    const closeAC = () => {
+      if (ac && !acClosed) {
+        acClosed = true;
+        ac.close().catch(() => {});
+        ac = null;
+      }
+    };
 
     setTimeout(() => {
       const u = new SpeechSynthesisUtterance(text);
@@ -252,30 +259,43 @@ function speak(text, lang) {
       u.lang = lang;
       u.rate = 0.95;
 
-      // iOS silently pauses speechSynthesis mid-utterance; keep nudging it
+      // Close AudioContext the moment TTS actually starts — gives iOS the full
+      // duration of the utterance to release the playback session before the
+      // mic needs to open. Keep it as fallback in done() too.
+      u.onstart = () => closeAC();
+
       const nudge = setInterval(() => {
         if (window.speechSynthesis.paused) window.speechSynthesis.resume();
       }, 100);
 
-      // Last-resort bail so the app never freezes
       const bail = setTimeout(() => {
         clearInterval(nudge);
         closeAC();
-        setTimeout(resolve, 600);
+        resolve();
       }, 4000 + text.length * 70);
 
       const done = () => {
         clearInterval(nudge);
         clearTimeout(bail);
         closeAC();
-        // 600ms lets iOS fully release the playback session before the mic opens
-        setTimeout(resolve, 600);
+        resolve();
       };
       u.onend   = done;
       u.onerror = done;
       window.speechSynthesis.speak(u);
     }, 500);
   });
+}
+
+// Explicitly switch iOS audio session from playback → record mode by briefly
+// opening the mic via getUserMedia. This is far faster than waiting for iOS
+// to do it passively (which can take 15-20 s after AudioContext use).
+async function forceRecordMode() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    await delay(200);
+  } catch (_) {}
 }
 
 // ── Translation API ───────────────────────────────────────────────────────────
@@ -306,14 +326,15 @@ async function executeTurn(speaker) {
   const speakerName  = isA ? 'English' : languages[targetCode];
 
   try {
-    // iOS audio session switching is slow — retry mic start silently.
-    // Only show "Listening" once onaudiostart fires so the user knows
-    // not to speak before the mic is actually open.
+    // Explicitly switch iOS audio session from playback → record mode.
+    // Without this, iOS can take 15-20s to release the session on its own.
+    setStatus('Preparing mic…', null);
+    await forceRecordMode();
+
     let spoken = null;
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        setStatus('Preparing mic…', null);
-        if (attempt > 0) await delay(700);
+        if (attempt > 0) { setStatus('Preparing mic…', null); await delay(500); }
         spoken = await startListening(listenLang, {
           onReady:  () => setStatus(`Listening for ${speakerName}…`, ''),
           onSpeech: () => setStatus('Got you, processing…', 'translating'),
@@ -391,10 +412,9 @@ async function startAutoLoop(firstSpeaker) {
     }
 
     speaker = speaker === 'a' ? 'b' : 'a';
-    // Pause between turns — iOS needs time to release playback session for mic
     if (autoActive) {
       setStatus('Next speaker…', null);
-      await delay(1800);
+      await delay(800);
     }
   }
 
