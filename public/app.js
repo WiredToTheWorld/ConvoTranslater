@@ -10,7 +10,16 @@ const pulse = document.getElementById('pulse');
 const conversationEl = document.getElementById('conversation');
 const browserWarning = document.getElementById('browser-warning');
 
-let languages = {};
+const languages = {
+  ar: 'Arabic', zh: 'Chinese (Mandarin)', cs: 'Czech', da: 'Danish',
+  nl: 'Dutch', fi: 'Finnish', fr: 'French', de: 'German', el: 'Greek',
+  he: 'Hebrew', hi: 'Hindi', hu: 'Hungarian', id: 'Indonesian',
+  it: 'Italian', ja: 'Japanese', ko: 'Korean', no: 'Norwegian',
+  pl: 'Polish', pt: 'Portuguese', ro: 'Romanian', ru: 'Russian',
+  es: 'Spanish', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
+  uk: 'Ukrainian', vi: 'Vietnamese',
+};
+
 let recognition = null;
 let isBusy = false;
 let utterance = null;
@@ -29,21 +38,12 @@ function loadVoices() {
 loadVoices();
 window.speechSynthesis.onvoiceschanged = loadVoices;
 
-// ── Load languages from server ───────────────────────────────────────────────
-async function loadLanguages() {
-  try {
-    const res = await fetch('/api/languages');
-    languages = await res.json();
-    targetLangSelect.innerHTML = '<option value="">— choose language —</option>' +
-      Object.entries(languages)
-        .sort((a, b) => a[1].localeCompare(b[1]))
-        .map(([code, name]) => `<option value="${code}">${name}</option>`)
-        .join('');
-  } catch (e) {
-    setStatus('Failed to load languages', false);
-  }
-}
-loadLanguages();
+// ── Populate language dropdown ───────────────────────────────────────────────
+targetLangSelect.innerHTML = '<option value="">— choose language —</option>' +
+  Object.entries(languages)
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([code, name]) => `<option value="${code}">${name}</option>`)
+    .join('');
 
 // ── Language selection ───────────────────────────────────────────────────────
 targetLangSelect.addEventListener('change', () => {
