@@ -183,8 +183,8 @@ async function activateSpeaker() {
   if (!sharedAC) return;
   try {
     await sharedAC.resume();
-    // Play a 1-sample silent buffer to route iOS audio to the speaker
-    const buf = sharedAC.createBuffer(1, 1, sharedAC.sampleRate);
+    // 100 ms of silence — long enough for iOS to register the audio session switch
+    const buf = sharedAC.createBuffer(1, Math.ceil(sharedAC.sampleRate * 0.1), sharedAC.sampleRate);
     const src = sharedAC.createBufferSource();
     src.buffer = buf;
     src.connect(sharedAC.destination);
@@ -250,10 +250,6 @@ function primeTTS() {
 function speak(text, lang) {
   return new Promise((resolve) => {
     window.speechSynthesis.cancel();
-
-    // Resume the shared AudioContext (created in primeTTS) to switch iOS audio
-    // routing to the speaker. suspend() at the end releases the hold in ~200 ms
-    // instead of the 15-20 s that close() takes.
     activateSpeaker().then(() => {
       setTimeout(() => {
         const u = new SpeechSynthesisUtterance(text);
@@ -265,22 +261,33 @@ function speak(text, lang) {
         u.lang = lang;
         u.rate = 0.95;
 
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          clearInterval(nudge);
+          clearInterval(poll);
+          clearTimeout(bail);
+          // Cancel any still-playing audio, then wait for AC to suspend before
+          // resolving — prevents the next turn's mic from opening while iOS is
+          // still in playback mode.
+          window.speechSynthesis.cancel();
+          suspendSpeaker().then(() => resolve());
+        };
+
         const nudge = setInterval(() => {
           if (window.speechSynthesis.paused) window.speechSynthesis.resume();
         }, 100);
 
-        const bail = setTimeout(() => {
-          clearInterval(nudge);
-          suspendSpeaker();
-          resolve();
-        }, 4000 + text.length * 70);
+        // Polling fallback: if onend never fires (common on iOS for languages
+        // without an installed voice), detect completion via speaking going false.
+        const speakStart = Date.now();
+        const poll = setInterval(() => {
+          if (!window.speechSynthesis.speaking && Date.now() - speakStart > 500) done();
+        }, 250);
 
-        const done = () => {
-          clearInterval(nudge);
-          clearTimeout(bail);
-          suspendSpeaker();
-          resolve();
-        };
+        const bail = setTimeout(done, 4000 + text.length * 70);
+
         u.onend   = done;
         u.onerror = done;
         window.speechSynthesis.speak(u);
@@ -317,11 +324,12 @@ async function executeTurn(speaker) {
   const speakerName = isA ? 'English' : languages[targetCode];
 
   try {
-    // Suspend AudioContext first so iOS can switch session to record mode.
-    // With suspend() this takes ~200 ms; close() would have taken 15-20 s.
+    // Cancel any lingering TTS, suspend AC, then give iOS time to release the
+    // audio session before opening the mic.
+    window.speechSynthesis.cancel();
     setStatus('Preparing mic…', null);
     await suspendSpeaker();
-    await delay(250);
+    await delay(500);
 
     let spoken = null;
     for (let attempt = 0; attempt < 3; attempt++) {
