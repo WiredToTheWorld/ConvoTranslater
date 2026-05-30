@@ -192,9 +192,11 @@ function startListening(lang) {
     r.onresult = (e) => settle(resolve, e.results[0][0].transcript.trim());
     r.onerror  = (e) => {
       clearTimeout(audioStartWatchdog);
-      if (e.error === 'aborted')        settle(reject, new Error('stopped'));
-      else if (e.error === 'no-speech') settle(reject, new Error('No speech detected — try again.'));
+      if (e.error === 'aborted')          settle(reject, new Error('stopped'));
+      else if (e.error === 'no-speech')   settle(reject, new Error('No speech detected — try again.'));
       else if (e.error === 'not-allowed') settle(reject, new Error('Microphone access denied.'));
+      else if (e.error === 'audio-capture' || e.error === 'service-not-allowed')
+                                          settle(reject, new Error('mic-unavailable'));
       else settle(reject, new Error(`Speech error: ${e.error}`));
     };
     r.onend = () => { clearTimeout(audioStartWatchdog); recognition = null; settle(reject, new Error('stopped')); };
