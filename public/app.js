@@ -1,15 +1,29 @@
 /* ConvoTranslater — frontend logic */
 
-const targetLangSelect = document.getElementById('target-lang');
-const btnA = document.getElementById('btn-a');
-const btnB = document.getElementById('btn-b');
-const btnBLabel = document.getElementById('btn-b-label');
-const btnClear = document.getElementById('btn-clear');
-const statusText = document.getElementById('status-text');
-const pulse = document.getElementById('pulse');
-const conversationEl = document.getElementById('conversation');
-const browserWarning = document.getElementById('browser-warning');
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const targetLangSelect  = document.getElementById('target-lang');
+const btnA              = document.getElementById('btn-a');
+const btnB              = document.getElementById('btn-b');
+const btnBLabel         = document.getElementById('btn-b-label');
+const btnAutoA          = document.getElementById('btn-auto-a');
+const btnAutoB          = document.getElementById('btn-auto-b');
+const btnAutoBLabel     = document.getElementById('btn-auto-b-label');
+const btnStop           = document.getElementById('btn-stop');
+const btnClear          = document.getElementById('btn-clear');
+const statusText        = document.getElementById('status-text');
+const pulse             = document.getElementById('pulse');
+const conversationEl    = document.getElementById('conversation');
+const browserWarning    = document.getElementById('browser-warning');
+const modeManualBtn     = document.getElementById('mode-manual');
+const modeAutoBtn       = document.getElementById('mode-auto');
+const manualButtons     = document.getElementById('manual-buttons');
+const autoButtons       = document.getElementById('auto-buttons');
+const autoStart         = document.getElementById('auto-start');
+const autoRunning       = document.getElementById('auto-running');
+const turnA             = document.getElementById('turn-a');
+const turnB             = document.getElementById('turn-b');
 
+// ── State ────────────────────────────────────────────────────────────────────
 const languages = {
   ar: 'Arabic', zh: 'Chinese (Mandarin)', cs: 'Czech', da: 'Danish',
   nl: 'Dutch', fi: 'Finnish', fr: 'French', de: 'German', el: 'Greek',
@@ -20,51 +34,63 @@ const languages = {
   uk: 'Ukrainian', vi: 'Vietnamese',
 };
 
+let mode        = 'manual'; // 'manual' | 'auto'
+let autoActive  = false;
+let isBusy      = false;
 let recognition = null;
-let isBusy = false;
-let utterance = null;
-let voices = [];
+let voices      = [];
 
-// ── Voice support check ─────────────────────────────────────────────────────
+// ── Voice support check ──────────────────────────────────────────────────────
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (!SpeechRecognition || !window.speechSynthesis) {
   browserWarning.classList.remove('hidden');
 }
 
-// ── Load voices (async in some browsers) ────────────────────────────────────
-function loadVoices() {
-  voices = window.speechSynthesis.getVoices();
-}
+// ── Load voices ──────────────────────────────────────────────────────────────
+function loadVoices() { voices = window.speechSynthesis.getVoices(); }
 loadVoices();
 window.speechSynthesis.onvoiceschanged = loadVoices;
 
-// ── Populate language dropdown ───────────────────────────────────────────────
+// ── Populate language dropdown ────────────────────────────────────────────────
 targetLangSelect.innerHTML = '<option value="">— choose language —</option>' +
   Object.entries(languages)
     .sort((a, b) => a[1].localeCompare(b[1]))
     .map(([code, name]) => `<option value="${code}">${name}</option>`)
     .join('');
 
-// ── Language selection ───────────────────────────────────────────────────────
+// ── Language selection ────────────────────────────────────────────────────────
 targetLangSelect.addEventListener('change', () => {
   const code = targetLangSelect.value;
-  if (!code) {
-    btnA.disabled = true;
-    btnB.disabled = true;
-    btnBLabel.textContent = 'Speak in...';
-    setStatus('Select a language to begin', false);
-    showEmpty();
-    return;
-  }
-  const name = languages[code];
-  btnBLabel.textContent = `Speak in ${name}`;
-  btnA.disabled = false;
-  btnB.disabled = false;
-  setStatus(`Ready — ${name} selected`, false);
+  const name = languages[code] || '';
+
+  btnBLabel.textContent      = code ? `Speak in ${name}` : 'Speak in...';
+  btnAutoBLabel.textContent  = code ? `${name} first`    : 'Start with...';
+  btnB.disabled      = !code;
+  btnA.disabled      = !code;
+  btnAutoA.disabled  = !code;
+  btnAutoB.disabled  = !code;
+
+  setStatus(code ? `Ready — ${name} selected` : 'Select a language to begin', null);
   showEmpty();
 });
 
-// ── Conversation rendering ───────────────────────────────────────────────────
+// ── Mode toggle ───────────────────────────────────────────────────────────────
+function switchMode(newMode) {
+  mode = newMode;
+  modeManualBtn.classList.toggle('mode-active', mode === 'manual');
+  modeAutoBtn.classList.toggle('mode-active', mode === 'auto');
+  manualButtons.classList.toggle('hidden', mode !== 'manual');
+  autoButtons.classList.toggle('hidden', mode !== 'auto');
+
+  if (mode === 'manual') {
+    stopAutoLoop();
+  }
+}
+
+modeManualBtn.addEventListener('click', () => switchMode('manual'));
+modeAutoBtn.addEventListener('click', () => switchMode('auto'));
+
+// ── Conversation rendering ────────────────────────────────────────────────────
 function showEmpty() {
   conversationEl.innerHTML = `
     <div class="empty-state">
@@ -74,29 +100,23 @@ function showEmpty() {
 }
 showEmpty();
 
-function addMessage({ speaker, original, translation, loading }) {
-  // Remove empty state
+function addMessage({ speaker, loading }) {
   const empty = conversationEl.querySelector('.empty-state');
   if (empty) empty.remove();
 
-  const group = document.createElement('div');
+  const group  = document.createElement('div');
   group.className = `message-group speaker-${speaker}`;
-  group.dataset.speaker = speaker;
 
-  const tag = document.createElement('div');
+  const tag    = document.createElement('div');
   tag.className = 'speaker-tag';
-  tag.textContent = speaker === 'a' ? 'Speaker A (English)' : `Speaker B (${languages[targetLangSelect.value] || ''})`;
+  tag.textContent = speaker === 'a'
+    ? 'Speaker A (English)'
+    : `Speaker B (${languages[targetLangSelect.value] || ''})`;
 
   const bubble = document.createElement('div');
   bubble.className = `bubble${loading ? ' loading' : ''}`;
-
   if (loading) {
     bubble.innerHTML = `<div class="original"><div class="dots"><span></span><span></span><span></span></div></div>`;
-  } else {
-    const isA = speaker === 'a';
-    bubble.innerHTML = `
-      <div class="original">${escHtml(original)}</div>
-      <div class="translation">${isA ? '&#8594;' : '&#8592;'} ${escHtml(translation)}</div>`;
   }
 
   group.appendChild(tag);
@@ -106,30 +126,33 @@ function addMessage({ speaker, original, translation, loading }) {
   return { group, bubble };
 }
 
-function updateMessage(group, bubble, { original, translation, speaker }) {
+function updateMessage(bubble, { original, translation, speaker }) {
   bubble.classList.remove('loading');
-  const isA = speaker === 'a';
+  const arrow = speaker === 'a' ? '&#8594;' : '&#8592;';
   bubble.innerHTML = `
     <div class="original">${escHtml(original)}</div>
-    <div class="translation">${isA ? '&#8594;' : '&#8592;'} ${escHtml(translation)}</div>`;
-  group.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    <div class="translation">${arrow} ${escHtml(translation)}</div>`;
+  bubble.closest('.message-group').scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
 function escHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ── Status helpers ───────────────────────────────────────────────────────────
-function setStatus(msg, busy, type) {
+// ── Status ────────────────────────────────────────────────────────────────────
+function setStatus(msg, type) {
   statusText.textContent = msg;
-  pulse.className = busy ? (type || '') : 'hidden';
+  pulse.className = type ?? 'hidden';
+}
+
+function setManualBusy(busy) {
   isBusy = busy;
   const hasLang = !!targetLangSelect.value;
   btnA.disabled = busy || !hasLang;
   btnB.disabled = busy || !hasLang;
 }
 
-// ── Speech recognition ───────────────────────────────────────────────────────
+// ── Speech recognition ────────────────────────────────────────────────────────
 function startListening(lang) {
   return new Promise((resolve, reject) => {
     if (!SpeechRecognition) return reject(new Error('No speech recognition'));
@@ -141,44 +164,41 @@ function startListening(lang) {
     r.interimResults = false;
     r.maxAlternatives = 1;
 
-    r.onresult = (e) => {
-      const text = e.results[0][0].transcript.trim();
-      resolve(text);
+    let settled = false;
+    const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
+
+    r.onresult = (e) => settle(resolve, e.results[0][0].transcript.trim());
+    r.onerror  = (e) => {
+      if (e.error === 'aborted')      settle(reject, new Error('stopped'));
+      else if (e.error === 'no-speech') settle(reject, new Error('No speech detected — try again.'));
+      else if (e.error === 'not-allowed') settle(reject, new Error('Microphone access denied.'));
+      else settle(reject, new Error(`Speech error: ${e.error}`));
     };
-    r.onerror = (e) => {
-      if (e.error === 'no-speech') reject(new Error('No speech detected. Try again.'));
-      else if (e.error === 'not-allowed') reject(new Error('Microphone access denied.'));
-      else reject(new Error(`Speech error: ${e.error}`));
-    };
-    r.onend = () => { recognition = null; };
+    r.onend = () => { recognition = null; settle(reject, new Error('stopped')); };
     r.start();
   });
 }
 
-// ── Text-to-speech ───────────────────────────────────────────────────────────
+// ── Text-to-speech ────────────────────────────────────────────────────────────
 function speak(text, lang) {
   return new Promise((resolve) => {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    utterance = u;
-
-    // Find best matching voice for language
     const match = voices.find(v => v.lang.startsWith(lang)) ||
                   voices.find(v => v.lang.startsWith(lang.split('-')[0]));
     if (match) u.voice = match;
     u.lang = lang;
     u.rate = 0.95;
-
-    u.onend = () => { utterance = null; resolve(); };
-    u.onerror = () => { utterance = null; resolve(); };
+    u.onend   = () => resolve();
+    u.onerror = () => resolve();
     window.speechSynthesis.speak(u);
   });
 }
 
-// ── Translation API ──────────────────────────────────────────────────────────
+// ── Translation API ───────────────────────────────────────────────────────────
 async function translate(text, fromLang, toLang) {
   const fromName = fromLang === 'en-US' ? 'English' : (languages[fromLang] || fromLang);
-  const toName = toLang === 'en-US' ? 'English' : (languages[toLang] || toLang);
+  const toName   = toLang   === 'en-US' ? 'English' : (languages[toLang]   || toLang);
   const res = await fetch('/api/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -188,63 +208,125 @@ async function translate(text, fromLang, toLang) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Translation failed');
   }
-  const data = await res.json();
-  return data.translated;
+  return (await res.json()).translated;
 }
 
-// ── Core flow: speak → transcribe → translate → read aloud ──────────────────
-async function handleTurn(speaker) {
+// ── Core turn (shared by both modes) ─────────────────────────────────────────
+async function executeTurn(speaker) {
   const targetCode = targetLangSelect.value;
-  if (!targetCode || isBusy) return;
+  if (!targetCode) return false;
 
-  const isA = speaker === 'a';
-  const listenLang = isA ? 'en-US' : targetCode;
-  const translateToLang = isA ? targetCode : 'en-US';
-  const btn = isA ? btnA : btnB;
-
-  btn.classList.add('active');
+  const isA          = speaker === 'a';
+  const listenLang   = isA ? 'en-US' : targetCode;
+  const speakLang    = isA ? targetCode : 'en-US';
+  const translateTo  = isA ? targetCode : 'en-US';
+  const speakerName  = isA ? 'English' : languages[targetCode];
 
   try {
-    // 1. Listen
-    setStatus('Listening...', true);
-    pulse.className = '';  // red pulse = recording
+    setStatus(`Listening for ${speakerName}…`, '');  // red pulse
     const spoken = await startListening(listenLang);
+    if (!spoken) throw new Error('Nothing heard');
 
-    if (!spoken) throw new Error('Nothing heard. Try again.');
+    setStatus('Translating…', 'translating');
+    const { bubble } = addMessage({ speaker, loading: true });
 
-    // 2. Show loading bubble
-    setStatus('Translating...', true, 'translating');
-    const { group, bubble } = addMessage({ speaker, loading: true });
+    const translated = await translate(spoken, listenLang, translateTo);
+    updateMessage(bubble, { original: spoken, translation: translated, speaker });
 
-    // 3. Translate
-    const translated = await translate(spoken, listenLang, translateToLang);
-
-    // 4. Update bubble with content
-    updateMessage(group, bubble, { original: spoken, translation: translated, speaker });
-
-    // 5. Read translation aloud
-    setStatus('Speaking...', true, 'speaking');
-    const speakLang = isA ? targetCode : 'en-US';
+    setStatus(`Speaking ${isA ? languages[targetCode] : 'English'}…`, 'speaking');
     await speak(translated, speakLang);
 
-    setStatus('Ready', false);
+    return true;
   } catch (err) {
-    setStatus(err.message || 'Something went wrong', false);
-  } finally {
-    btn.classList.remove('active');
+    if (err.message !== 'stopped') {
+      setStatus(err.message || 'Something went wrong', null);
+    }
+    return false;
   }
 }
 
-// ── Button handlers ──────────────────────────────────────────────────────────
-btnA.addEventListener('click', () => handleTurn('a'));
-btnB.addEventListener('click', () => handleTurn('b'));
+// ── Manual mode ───────────────────────────────────────────────────────────────
+async function handleManualTurn(speaker) {
+  if (isBusy || mode !== 'manual') return;
+  setManualBusy(true);
+  const btn = speaker === 'a' ? btnA : btnB;
+  btn.classList.add('active');
+  try {
+    await executeTurn(speaker);
+  } finally {
+    btn.classList.remove('active');
+    setManualBusy(false);
+    setStatus('Ready', null);
+  }
+}
 
+btnA.addEventListener('click', () => handleManualTurn('a'));
+btnB.addEventListener('click', () => handleManualTurn('b'));
+
+// ── Auto mode ─────────────────────────────────────────────────────────────────
+function setTurnIndicator(speaker) {
+  turnA.classList.toggle('hidden', speaker !== 'a');
+  turnB.classList.toggle('hidden', speaker !== 'b');
+  const name = languages[targetLangSelect.value] || '';
+  turnB.textContent = `${name} listening`;
+}
+
+async function startAutoLoop(firstSpeaker) {
+  if (!targetLangSelect.value || autoActive) return;
+  autoActive = true;
+
+  autoStart.classList.add('hidden');
+  autoRunning.classList.remove('hidden');
+
+  let speaker = firstSpeaker;
+  while (autoActive) {
+    setTurnIndicator(speaker);
+    const ok = await executeTurn(speaker);
+    if (!autoActive) break;
+
+    if (!ok) {
+      // Retry same speaker after brief pause
+      await delay(900);
+      continue;
+    }
+
+    speaker = speaker === 'a' ? 'b' : 'a';
+    // Pause between turns so speakers aren't caught off guard
+    if (autoActive) {
+      setStatus('Next speaker…', null);
+      await delay(700);
+    }
+  }
+
+  autoStart.classList.remove('hidden');
+  autoRunning.classList.add('hidden');
+  setStatus(targetLangSelect.value ? 'Ready' : 'Select a language to begin', null);
+}
+
+function stopAutoLoop() {
+  if (!autoActive) return;
+  autoActive = false;
+  window.speechSynthesis.cancel();
+  if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+btnAutoA.addEventListener('click', () => startAutoLoop('a'));
+btnAutoB.addEventListener('click', () => startAutoLoop('b'));
+btnStop.addEventListener('click', stopAutoLoop);
+
+// ── Clear ─────────────────────────────────────────────────────────────────────
 btnClear.addEventListener('click', () => {
+  stopAutoLoop();
   window.speechSynthesis.cancel();
   if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
   isBusy = false;
   btnA.classList.remove('active');
   btnB.classList.remove('active');
-  setStatus(targetLangSelect.value ? 'Ready' : 'Select a language to begin', false);
+  const hasLang = !!targetLangSelect.value;
+  btnA.disabled = !hasLang;
+  btnB.disabled = !hasLang;
+  setStatus(hasLang ? 'Ready' : 'Select a language to begin', null);
   showEmpty();
 });

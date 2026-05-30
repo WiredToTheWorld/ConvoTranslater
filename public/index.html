@@ -32,11 +32,22 @@
     <div id="conversation"></div>
 
     <div id="controls">
+      <div id="mode-toggle">
+        <button id="mode-manual" class="mode-btn mode-active">
+          <span class="mode-icon">&#9654;&#9646;</span> Manual
+        </button>
+        <button id="mode-auto" class="mode-btn">
+          <span class="mode-icon">&#8635;</span> Auto
+        </button>
+      </div>
+
       <div id="status-bar">
         <span id="status-text">Select a language to begin</span>
         <div id="pulse" class="hidden"></div>
       </div>
-      <div id="buttons">
+
+      <!-- Manual mode -->
+      <div id="manual-buttons" class="btn-panel">
         <button id="btn-a" class="speak-btn btn-english" disabled>
           <span class="btn-icon">&#127908;</span>
           <span class="btn-label">Speak in English</span>
@@ -46,6 +57,33 @@
           <span class="btn-label" id="btn-b-label">Speak in...</span>
         </button>
       </div>
+
+      <!-- Auto mode -->
+      <div id="auto-buttons" class="btn-panel hidden">
+        <div id="auto-start">
+          <p class="auto-hint">Who speaks first?</p>
+          <div class="auto-start-row">
+            <button id="btn-auto-a" class="speak-btn btn-english" disabled>
+              <span class="btn-icon">&#9654;</span>
+              <span class="btn-label">English first</span>
+            </button>
+            <button id="btn-auto-b" class="speak-btn btn-foreign" disabled>
+              <span class="btn-icon">&#9654;</span>
+              <span class="btn-label" id="btn-auto-b-label">Start with...</span>
+            </button>
+          </div>
+        </div>
+        <div id="auto-running" class="hidden">
+          <div id="turn-indicator">
+            <div id="turn-a" class="turn-pill turn-pill-a">Speaker A listening</div>
+            <div id="turn-b" class="turn-pill turn-pill-b hidden">Speaker B listening</div>
+          </div>
+          <button id="btn-stop" class="stop-btn">
+            <span>&#9632;</span> Stop conversation
+          </button>
+        </div>
+      </div>
+
       <button id="btn-clear" class="clear-btn">Clear conversation</button>
     </div>
 
