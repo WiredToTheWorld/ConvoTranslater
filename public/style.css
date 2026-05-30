@@ -133,7 +133,7 @@ select:focus { border-color: var(--accent-b); }
   background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
-  transform: translate(-50%, -50%) rotate(90deg);
+  transform: translate(-50%, -50%);
   opacity: 0;
   transition: opacity 0.6s ease;
   pointer-events: none;
