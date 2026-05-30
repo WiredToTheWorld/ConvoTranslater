@@ -180,14 +180,24 @@ function startListening(lang) {
     let settled = false;
     const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
 
+    // iOS sometimes silently fails to open the mic (audio session still in
+    // playback mode). onaudiostart fires only when the mic actually activates;
+    // if it doesn't within 3 s we surface an error instead of hanging forever.
+    const audioStartWatchdog = setTimeout(() => {
+      settle(reject, new Error('Microphone unavailable — tap to retry.'));
+      try { r.stop(); } catch (_) {}
+    }, 3000);
+
+    r.onaudiostart = () => clearTimeout(audioStartWatchdog);
     r.onresult = (e) => settle(resolve, e.results[0][0].transcript.trim());
     r.onerror  = (e) => {
-      if (e.error === 'aborted')      settle(reject, new Error('stopped'));
+      clearTimeout(audioStartWatchdog);
+      if (e.error === 'aborted')        settle(reject, new Error('stopped'));
       else if (e.error === 'no-speech') settle(reject, new Error('No speech detected — try again.'));
       else if (e.error === 'not-allowed') settle(reject, new Error('Microphone access denied.'));
       else settle(reject, new Error(`Speech error: ${e.error}`));
     };
-    r.onend = () => { recognition = null; settle(reject, new Error('stopped')); };
+    r.onend = () => { clearTimeout(audioStartWatchdog); recognition = null; settle(reject, new Error('stopped')); };
     r.start();
   });
 }
@@ -211,20 +221,23 @@ function speak(text, lang) {
     window.speechSynthesis.cancel();
 
     // iOS keeps the audio session in "voice input" mode after mic use, which
-    // silently routes TTS output nowhere. Playing a zero-length AudioContext
-    // buffer forces iOS to switch the session back to playback mode.
+    // silently routes TTS output nowhere. An AudioContext buffer forces a
+    // switch to playback mode. We hold it open until TTS finishes, then close
+    // it with a 300ms grace period so iOS can release the session before the
+    // mic tries to open on the next turn.
+    let ac = null;
     try {
-      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      ac = new (window.AudioContext || window.webkitAudioContext)();
       const buf = ac.createBuffer(1, 1, ac.sampleRate);
       const src = ac.createBufferSource();
       src.buffer = buf;
       src.connect(ac.destination);
       src.start(0);
       ac.resume();
-      setTimeout(() => ac.close().catch(() => {}), 1000);
-    } catch (_) {}
+    } catch (_) { ac = null; }
 
-    // Give iOS time to finish the audio session handoff before TTS starts
+    const closeAC = () => { if (ac) { ac.close().catch(() => {}); ac = null; } };
+
     setTimeout(() => {
       const u = new SpeechSynthesisUtterance(text);
       const base = lang.split('-')[0];
@@ -243,10 +256,17 @@ function speak(text, lang) {
       // Last-resort bail so the app never freezes
       const bail = setTimeout(() => {
         clearInterval(nudge);
-        resolve();
+        closeAC();
+        setTimeout(resolve, 300);
       }, 4000 + text.length * 70);
 
-      const done = () => { clearInterval(nudge); clearTimeout(bail); resolve(); };
+      const done = () => {
+        clearInterval(nudge);
+        clearTimeout(bail);
+        closeAC();
+        // 300ms lets iOS fully release the playback session before the mic opens
+        setTimeout(resolve, 300);
+      };
       u.onend   = done;
       u.onerror = done;
       window.speechSynthesis.speak(u);
@@ -352,10 +372,10 @@ async function startAutoLoop(firstSpeaker) {
     }
 
     speaker = speaker === 'a' ? 'b' : 'a';
-    // Pause between turns so speakers aren't caught off guard
+    // Pause between turns — iOS needs time to release playback session for mic
     if (autoActive) {
       setStatus('Next speaker…', null);
-      await delay(700);
+      await delay(1200);
     }
   }
 
