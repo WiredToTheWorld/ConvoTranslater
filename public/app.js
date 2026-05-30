@@ -193,11 +193,38 @@ function startListening(lang) {
 }
 
 // ── Text-to-speech ────────────────────────────────────────────────────────────
+
+// Called synchronously inside button click handlers (before any await) so that
+// iOS registers our intent to use speech synthesis within the user gesture.
+function primeTTS() {
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(' '); // non-breaking space
+    u.volume = 0;
+    u.rate = 10;
+    window.speechSynthesis.speak(u);
+  } catch (_) {}
+}
+
 function speak(text, lang) {
   return new Promise((resolve) => {
     window.speechSynthesis.cancel();
 
-    // iOS: after mic use the audio session needs a moment to hand off to TTS
+    // iOS keeps the audio session in "voice input" mode after mic use, which
+    // silently routes TTS output nowhere. Playing a zero-length AudioContext
+    // buffer forces iOS to switch the session back to playback mode.
+    try {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const buf = ac.createBuffer(1, 1, ac.sampleRate);
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      src.connect(ac.destination);
+      src.start(0);
+      ac.resume();
+      setTimeout(() => ac.close().catch(() => {}), 1000);
+    } catch (_) {}
+
+    // Give iOS time to finish the audio session handoff before TTS starts
     setTimeout(() => {
       const u = new SpeechSynthesisUtterance(text);
       const base = lang.split('-')[0];
@@ -208,12 +235,12 @@ function speak(text, lang) {
       u.lang = lang;
       u.rate = 0.95;
 
-      // iOS silently pauses speechSynthesis mid-utterance; nudge it awake
+      // iOS silently pauses speechSynthesis mid-utterance; keep nudging it
       const nudge = setInterval(() => {
         if (window.speechSynthesis.paused) window.speechSynthesis.resume();
       }, 100);
 
-      // iOS sometimes never fires onend at all; bail after a generous timeout
+      // Last-resort bail so the app never freezes
       const bail = setTimeout(() => {
         clearInterval(nudge);
         resolve();
@@ -223,7 +250,7 @@ function speak(text, lang) {
       u.onend   = done;
       u.onerror = done;
       window.speechSynthesis.speak(u);
-    }, 250);
+    }, 500);
   });
 }
 
@@ -280,6 +307,7 @@ async function executeTurn(speaker) {
 // ── Manual mode ───────────────────────────────────────────────────────────────
 async function handleManualTurn(speaker) {
   if (isBusy || mode !== 'manual') return;
+  primeTTS(); // iOS: register TTS intent within user gesture before any await
   setManualBusy(true);
   const btn = speaker === 'a' ? btnA : btnB;
   btn.classList.add('active');
@@ -305,6 +333,7 @@ function setTurnIndicator(speaker) {
 
 async function startAutoLoop(firstSpeaker) {
   if (!targetLangSelect.value || autoActive) return;
+  primeTTS(); // iOS: register TTS intent within user gesture before any await
   autoActive = true;
 
   autoStart.classList.add('hidden');
