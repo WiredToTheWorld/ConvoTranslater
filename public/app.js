@@ -22,6 +22,8 @@ const autoStart         = document.getElementById('auto-start');
 const autoRunning       = document.getElementById('auto-running');
 const turnA             = document.getElementById('turn-a');
 const turnB             = document.getElementById('turn-b');
+const vibeStandardBtn   = document.getElementById('vibe-standard');
+const vibeFlirtyBtn     = document.getElementById('vibe-flirty');
 
 // ── State ────────────────────────────────────────────────────────────────────
 const languages = {
@@ -56,6 +58,7 @@ const SPEECH_LANG = {
 const speechLang = (code) => SPEECH_LANG[code] || code;
 
 let mode        = 'manual';
+let vibe        = 'standard';
 let autoActive  = false;
 let isBusy      = false;
 let recognition = null;
@@ -112,6 +115,15 @@ function switchMode(newMode) {
 }
 modeManualBtn.addEventListener('click', () => switchMode('manual'));
 modeAutoBtn.addEventListener('click', () => switchMode('auto'));
+
+// ── Vibe toggle ───────────────────────────────────────────────────────────────
+function switchVibe(newVibe) {
+  vibe = newVibe;
+  vibeStandardBtn.classList.toggle('vibe-active', vibe === 'standard');
+  vibeFlirtyBtn.classList.toggle('vibe-active', vibe === 'flirty');
+}
+vibeStandardBtn.addEventListener('click', () => switchVibe('standard'));
+vibeFlirtyBtn.addEventListener('click', () => switchVibe('flirty'));
 
 // ── Conversation rendering ────────────────────────────────────────────────────
 function showEmpty() {
@@ -303,7 +315,7 @@ async function translate(text, fromLang, toLang) {
   const res = await fetch('/api/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, fromLang, toLang, fromLangName: fromName, toLangName: toName }),
+    body: JSON.stringify({ text, fromLang, toLang, fromLangName: fromName, toLangName: toName, vibe }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
