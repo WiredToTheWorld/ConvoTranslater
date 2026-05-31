@@ -15,7 +15,7 @@ export default async (req) => {
     }
 
     const vibeInstruction = vibe === 'flirty'
-      ? 'Use a flirty, cheeky, and playfully casual tone — think light-hearted banter with a wink. Keep the core meaning but add charm, warmth, and a little teasing.'
+      ? 'Use a flirty, cheeky, and playfully casual tone — think light-hearted banter with a wink. Keep the core meaning but add charm, warmth, and a little teasing. Do not add any emoji or emoticons.'
       : 'Preserve the natural conversational tone.';
 
     const message = await client.messages.create({
