@@ -25,38 +25,43 @@ const turnB             = document.getElementById('turn-b');
 const vibeStandardBtn   = document.getElementById('vibe-standard');
 const vibeFlirtyBtn     = document.getElementById('vibe-flirty');
 
+// ── Languages ────────────────────────────────────────────────────────────────
+// code → { name, speech: BCP-47 tag for recognition/TTS, flag: ISO 3166-1
+// alpha-2 country code for flagcdn.com }. Add new languages here only.
+const LANGUAGES = {
+  ar: { name: 'Arabic',             speech: 'ar-SA', flag: 'sa' },
+  zh: { name: 'Chinese (Mandarin)', speech: 'zh-CN', flag: 'cn' },
+  cs: { name: 'Czech',              speech: 'cs-CZ', flag: 'cz' },
+  da: { name: 'Danish',             speech: 'da-DK', flag: 'dk' },
+  nl: { name: 'Dutch',              speech: 'nl-NL', flag: 'nl' },
+  fi: { name: 'Finnish',            speech: 'fi-FI', flag: 'fi' },
+  fr: { name: 'French',             speech: 'fr-FR', flag: 'fr' },
+  de: { name: 'German',             speech: 'de-DE', flag: 'de' },
+  el: { name: 'Greek',              speech: 'el-GR', flag: 'gr' },
+  he: { name: 'Hebrew',             speech: 'he-IL', flag: 'il' },
+  hi: { name: 'Hindi',              speech: 'hi-IN', flag: 'in' },
+  hu: { name: 'Hungarian',          speech: 'hu-HU', flag: 'hu' },
+  id: { name: 'Indonesian',         speech: 'id-ID', flag: 'id' },
+  it: { name: 'Italian',            speech: 'it-IT', flag: 'it' },
+  ja: { name: 'Japanese',           speech: 'ja-JP', flag: 'jp' },
+  ko: { name: 'Korean',             speech: 'ko-KR', flag: 'kr' },
+  no: { name: 'Norwegian',          speech: 'nb-NO', flag: 'no' },
+  pl: { name: 'Polish',             speech: 'pl-PL', flag: 'pl' },
+  pt: { name: 'Portuguese',         speech: 'pt-BR', flag: 'pt' },
+  ro: { name: 'Romanian',           speech: 'ro-RO', flag: 'ro' },
+  ru: { name: 'Russian',            speech: 'ru-RU', flag: 'ru' },
+  sk: { name: 'Slovak',             speech: 'sk-SK', flag: 'sk' },
+  es: { name: 'Spanish',            speech: 'es-ES', flag: 'es' },
+  sv: { name: 'Swedish',            speech: 'sv-SE', flag: 'se' },
+  th: { name: 'Thai',               speech: 'th-TH', flag: 'th' },
+  tr: { name: 'Turkish',            speech: 'tr-TR', flag: 'tr' },
+  uk: { name: 'Ukrainian',          speech: 'uk-UA', flag: 'ua' },
+  vi: { name: 'Vietnamese',         speech: 'vi-VN', flag: 'vn' },
+};
+const langName   = (code) => code === 'en-US' ? 'English' : (LANGUAGES[code]?.name ?? code);
+const speechLang = (code) => code === 'en-US' ? 'en-US'   : (LANGUAGES[code]?.speech ?? code);
+
 // ── State ────────────────────────────────────────────────────────────────────
-const languages = {
-  ar: 'Arabic', zh: 'Chinese (Mandarin)', cs: 'Czech', da: 'Danish',
-  nl: 'Dutch', fi: 'Finnish', fr: 'French', de: 'German', el: 'Greek',
-  he: 'Hebrew', hi: 'Hindi', hu: 'Hungarian', id: 'Indonesian',
-  it: 'Italian', ja: 'Japanese', ko: 'Korean', no: 'Norwegian',
-  pl: 'Polish', pt: 'Portuguese', ro: 'Romanian', ru: 'Russian',
-  sk: 'Slovak', es: 'Spanish', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
-  uk: 'Ukrainian', vi: 'Vietnamese',
-};
-
-// Maps language code → ISO 3166-1 alpha-2 country code for flagcdn.com
-const FLAG_COUNTRY = {
-  ar: 'sa', zh: 'cn', cs: 'cz', da: 'dk', nl: 'nl', fi: 'fi',
-  fr: 'fr', de: 'de', el: 'gr', he: 'il', hi: 'in', hu: 'hu',
-  id: 'id', it: 'it', ja: 'jp', ko: 'kr', no: 'no', pl: 'pl',
-  pt: 'pt', ro: 'ro', ru: 'ru', sk: 'sk', es: 'es', sv: 'se',
-  th: 'th', tr: 'tr', uk: 'ua', vi: 'vn',
-};
-
-const SPEECH_LANG = {
-  'en-US': 'en-US',
-  ar: 'ar-SA', zh: 'zh-CN', cs: 'cs-CZ', da: 'da-DK',
-  nl: 'nl-NL', fi: 'fi-FI', fr: 'fr-FR', de: 'de-DE', el: 'el-GR',
-  he: 'he-IL', hi: 'hi-IN', hu: 'hu-HU', id: 'id-ID',
-  it: 'it-IT', ja: 'ja-JP', ko: 'ko-KR', no: 'nb-NO',
-  pl: 'pl-PL', pt: 'pt-BR', ro: 'ro-RO', ru: 'ru-RU', sk: 'sk-SK',
-  es: 'es-ES', sv: 'sv-SE', th: 'th-TH', tr: 'tr-TR',
-  uk: 'uk-UA', vi: 'vi-VN',
-};
-const speechLang = (code) => SPEECH_LANG[code] || code;
-
 let mode        = 'manual';
 let vibe        = 'standard';
 let autoActive  = false;
@@ -77,25 +82,31 @@ window.speechSynthesis.onvoiceschanged = loadVoices;
 
 // ── Populate language dropdown ────────────────────────────────────────────────
 targetLangSelect.innerHTML = '<option value="">— choose language —</option>' +
-  Object.entries(languages)
-    .sort((a, b) => a[1].localeCompare(b[1]))
-    .map(([code, name]) => `<option value="${code}">${name}</option>`)
+  Object.entries(LANGUAGES)
+    .sort((a, b) => a[1].name.localeCompare(b[1].name))
+    .map(([code, { name }]) => `<option value="${code}">${name}</option>`)
     .join('');
+
+// ── Button state ─────────────────────────────────────────────────────────────
+function updateButtons() {
+  const hasLang = !!targetLangSelect.value;
+  btnA.disabled     = isBusy || !hasLang;
+  btnB.disabled     = isBusy || !hasLang;
+  btnAutoA.disabled = !hasLang;
+  btnAutoB.disabled = !hasLang;
+}
 
 // ── Language selection ────────────────────────────────────────────────────────
 targetLangSelect.addEventListener('change', () => {
   const code = targetLangSelect.value;
-  const name = languages[code] || '';
+  const name = LANGUAGES[code]?.name || '';
   btnBLabel.textContent     = code ? `Speak in ${name}` : 'Speak in...';
   btnAutoBLabel.textContent = code ? `${name} first`    : 'Start with...';
-  btnB.disabled      = !code;
-  btnA.disabled      = !code;
-  btnAutoA.disabled  = !code;
-  btnAutoB.disabled  = !code;
+  updateButtons();
   setStatus(code ? `Ready — ${name} selected` : 'Select a language to begin', null);
-  const countryCode = FLAG_COUNTRY[code];
-  if (countryCode) {
-    conversationEl.style.setProperty('--flag-url', `url('https://flagcdn.com/w640/${countryCode}.png')`);
+  const flag = LANGUAGES[code]?.flag;
+  if (flag) {
+    conversationEl.style.setProperty('--flag-url', `url('https://flagcdn.com/w640/${flag}.png')`);
     conversationEl.classList.add('has-flag');
   } else {
     conversationEl.style.removeProperty('--flag-url');
@@ -107,8 +118,8 @@ targetLangSelect.addEventListener('change', () => {
 // ── Mode toggle ───────────────────────────────────────────────────────────────
 function switchMode(newMode) {
   mode = newMode;
-  modeManualBtn.classList.toggle('mode-active', mode === 'manual');
-  modeAutoBtn.classList.toggle('mode-active', mode === 'auto');
+  modeManualBtn.classList.toggle('toggle-active', mode === 'manual');
+  modeAutoBtn.classList.toggle('toggle-active', mode === 'auto');
   manualButtons.classList.toggle('hidden', mode !== 'manual');
   autoButtons.classList.toggle('hidden', mode !== 'auto');
   if (mode === 'manual') stopAutoLoop();
@@ -119,8 +130,8 @@ modeAutoBtn.addEventListener('click', () => switchMode('auto'));
 // ── Vibe toggle ───────────────────────────────────────────────────────────────
 function switchVibe(newVibe) {
   vibe = newVibe;
-  vibeStandardBtn.classList.toggle('vibe-active', vibe === 'standard');
-  vibeFlirtyBtn.classList.toggle('vibe-active', vibe === 'flirty');
+  vibeStandardBtn.classList.toggle('toggle-active', vibe === 'standard');
+  vibeFlirtyBtn.classList.toggle('toggle-active', vibe === 'flirty');
 }
 vibeStandardBtn.addEventListener('click', () => switchVibe('standard'));
 vibeFlirtyBtn.addEventListener('click', () => switchVibe('flirty'));
@@ -144,7 +155,7 @@ function addMessage({ speaker, loading }) {
   tag.className = 'speaker-tag';
   tag.textContent = speaker === 'a'
     ? 'Speaker A (English)'
-    : `Speaker B (${languages[targetLangSelect.value] || ''})`;
+    : `Speaker B (${langName(targetLangSelect.value)})`;
   const bubble = document.createElement('div');
   bubble.className = `bubble${loading ? ' loading' : ''}`;
   if (loading) bubble.innerHTML = `<div class="original"><div class="dots"><span></span><span></span><span></span></div></div>`;
@@ -175,9 +186,7 @@ function setStatus(msg, type) {
 }
 function setManualBusy(busy) {
   isBusy = busy;
-  const hasLang = !!targetLangSelect.value;
-  btnA.disabled = busy || !hasLang;
-  btnB.disabled = busy || !hasLang;
+  updateButtons();
 }
 
 // ── Shared AudioContext ───────────────────────────────────────────────────────
@@ -208,6 +217,13 @@ async function suspendSpeaker() {
   if (sharedAC && sharedAC.state === 'running') {
     await sharedAC.suspend().catch(() => {});
   }
+}
+
+// Stop everything that holds the audio session: TTS, mic, AudioContext.
+function resetAudio() {
+  window.speechSynthesis.cancel();
+  suspendSpeaker();
+  if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
 }
 
 // ── Speech recognition ────────────────────────────────────────────────────────
@@ -277,8 +293,7 @@ function speak(text, lang) {
         const done = () => {
           if (settled) return;
           settled = true;
-          clearInterval(nudge);
-          clearInterval(poll);
+          clearInterval(tick);
           clearTimeout(bail);
           // Cancel any still-playing audio, then wait for AC to suspend before
           // resolving — prevents the next turn's mic from opening while iOS is
@@ -287,16 +302,14 @@ function speak(text, lang) {
           suspendSpeaker().then(() => resolve());
         };
 
-        const nudge = setInterval(() => {
-          if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-        }, 100);
-
-        // Polling fallback: if onend never fires (common on iOS for languages
-        // without an installed voice), detect completion via speaking going false.
         const speakStart = Date.now();
-        const poll = setInterval(() => {
+        const tick = setInterval(() => {
+          // iOS sometimes pauses synthesis mid-utterance; nudge it along.
+          if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+          // Fallback: if onend never fires (common on iOS for languages without
+          // an installed voice), detect completion via speaking going false.
           if (!window.speechSynthesis.speaking && Date.now() - speakStart > 500) done();
-        }, 250);
+        }, 100);
 
         const bail = setTimeout(done, 4000 + text.length * 70);
 
@@ -310,12 +323,15 @@ function speak(text, lang) {
 
 // ── Translation API ───────────────────────────────────────────────────────────
 async function translate(text, fromLang, toLang) {
-  const fromName = fromLang === 'en-US' ? 'English' : (languages[fromLang] || fromLang);
-  const toName   = toLang   === 'en-US' ? 'English' : (languages[toLang]   || toLang);
   const res = await fetch('/api/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, fromLang, toLang, fromLangName: fromName, toLangName: toName, vibe }),
+    body: JSON.stringify({
+      text, fromLang, toLang,
+      fromLangName: langName(fromLang),
+      toLangName: langName(toLang),
+      vibe,
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -329,11 +345,9 @@ async function executeTurn(speaker) {
   const targetCode = targetLangSelect.value;
   if (!targetCode) return false;
 
-  const isA         = speaker === 'a';
-  const listenLang  = speechLang(isA ? 'en-US' : targetCode);
-  const speakLang   = speechLang(isA ? targetCode : 'en-US');
-  const translateTo = isA ? targetCode : 'en-US';
-  const speakerName = isA ? 'English' : languages[targetCode];
+  const isA      = speaker === 'a';
+  const fromCode = isA ? 'en-US' : targetCode;
+  const toCode   = isA ? targetCode : 'en-US';
 
   try {
     // Cancel any lingering TTS, suspend AC, then give iOS time to release the
@@ -347,8 +361,8 @@ async function executeTurn(speaker) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         if (attempt > 0) { setStatus('Preparing mic…', null); await delay(600); }
-        spoken = await startListening(listenLang, {
-          onReady:  () => setStatus(`Listening for ${speakerName}…`, ''),
+        spoken = await startListening(speechLang(fromCode), {
+          onReady:  () => setStatus(`Listening for ${langName(fromCode)}…`, ''),
           onSpeech: () => setStatus('Got you, processing…', 'translating'),
         });
         break;
@@ -360,11 +374,11 @@ async function executeTurn(speaker) {
 
     setStatus('Translating…', 'translating');
     const { bubble } = addMessage({ speaker, loading: true });
-    const translated = await translate(spoken, listenLang, translateTo);
+    const translated = await translate(spoken, fromCode, toCode);
     updateMessage(bubble, { original: spoken, translation: translated, speaker });
 
-    setStatus(`Speaking ${isA ? languages[targetCode] : 'English'}…`, 'speaking');
-    await speak(translated, speakLang);
+    setStatus(`Speaking ${langName(toCode)}…`, 'speaking');
+    await speak(translated, speechLang(toCode));
 
     return true;
   } catch (err) {
@@ -396,7 +410,7 @@ btnB.addEventListener('click', () => handleManualTurn('b'));
 function setTurnIndicator(speaker) {
   turnA.classList.toggle('hidden', speaker !== 'a');
   turnB.classList.toggle('hidden', speaker !== 'b');
-  turnB.textContent = `${languages[targetLangSelect.value] || ''} listening`;
+  turnB.textContent = `${langName(targetLangSelect.value)} listening`;
 }
 
 async function startAutoLoop(firstSpeaker) {
@@ -424,9 +438,7 @@ async function startAutoLoop(firstSpeaker) {
 function stopAutoLoop() {
   if (!autoActive) return;
   autoActive = false;
-  window.speechSynthesis.cancel();
-  suspendSpeaker();
-  if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
+  resetAudio();
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -437,16 +449,12 @@ btnStop.addEventListener('click', stopAutoLoop);
 
 // ── Clear ─────────────────────────────────────────────────────────────────────
 btnClear.addEventListener('click', () => {
-  stopAutoLoop();
-  window.speechSynthesis.cancel();
-  suspendSpeaker();
-  if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
+  autoActive = false;
+  resetAudio();
   isBusy = false;
   btnA.classList.remove('active');
   btnB.classList.remove('active');
-  const hasLang = !!targetLangSelect.value;
-  btnA.disabled = !hasLang;
-  btnB.disabled = !hasLang;
-  setStatus(hasLang ? 'Ready' : 'Select a language to begin', null);
+  updateButtons();
+  setStatus(targetLangSelect.value ? 'Ready' : 'Select a language to begin', null);
   showEmpty();
 });

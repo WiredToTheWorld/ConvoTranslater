@@ -126,23 +126,6 @@ select:focus { border-color: var(--accent-b); }
   padding: 3px;
   gap: 2px;
 }
-.vibe-btn {
-  padding: 5px 14px;
-  background: none;
-  border: none;
-  border-radius: 5px;
-  color: var(--text-muted);
-  font-family: var(--font);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.18s;
-}
-.vibe-btn.vibe-active {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
-}
 
 /* Conversation */
 #conversation {
@@ -273,7 +256,7 @@ select:focus { border-color: var(--accent-b); }
   gap: 9px;
 }
 
-/* Mode toggle */
+/* Pill toggles (mode + vibe) */
 #mode-toggle {
   display: flex;
   background: var(--surface2);
@@ -284,7 +267,7 @@ select:focus { border-color: var(--accent-b); }
   width: 100%;
   max-width: 300px;
 }
-.mode-btn {
+.toggle-btn {
   flex: 1;
   padding: 7px 14px;
   background: none;
@@ -301,7 +284,7 @@ select:focus { border-color: var(--accent-b); }
   justify-content: center;
   gap: 5px;
 }
-.mode-btn.mode-active {
+.toggle-btn.toggle-active {
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 1px 4px rgba(0,0,0,0.35);

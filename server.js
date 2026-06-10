@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { buildTranslationPrompt } from './lib/prompt.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,17 +13,8 @@ app.use(express.static(join(__dirname, 'public')));
 
 const client = new Anthropic();
 
-const LANGUAGE_NAMES = {
-  es: 'Spanish', fr: 'French', de: 'German', it: 'Italian', pt: 'Portuguese',
-  ja: 'Japanese', zh: 'Chinese (Mandarin)', ko: 'Korean', ar: 'Arabic',
-  hi: 'Hindi', ru: 'Russian', nl: 'Dutch', pl: 'Polish', tr: 'Turkish',
-  sv: 'Swedish', da: 'Danish', fi: 'Finnish', no: 'Norwegian', el: 'Greek',
-  he: 'Hebrew', th: 'Thai', vi: 'Vietnamese', id: 'Indonesian', uk: 'Ukrainian',
-  cs: 'Czech', ro: 'Romanian', hu: 'Hungarian',
-};
-
 app.post('/api/translate', async (req, res) => {
-  const { text, fromLang, toLang, fromLangName, toLangName } = req.body;
+  const { text, fromLang, toLang } = req.body;
 
   if (!text || !fromLang || !toLang) {
     return res.status(400).json({ error: 'Missing required fields: text, fromLang, toLang' });
@@ -32,24 +24,14 @@ app.post('/api/translate', async (req, res) => {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: `Translate the following text from ${fromLangName || fromLang} to ${toLangName || toLang}. Return ONLY the translated text with no explanation, no quotes, no prefixes. Preserve the natural conversational tone.\n\nText to translate:\n${text}`,
-        },
-      ],
+      messages: [{ role: 'user', content: buildTranslationPrompt(req.body) }],
     });
 
-    const translated = message.content[0].text.trim();
-    res.json({ translated });
+    res.json({ translated: message.content[0].text.trim() });
   } catch (err) {
     console.error('Translation error:', err);
     res.status(500).json({ error: 'Translation failed', details: err.message });
   }
-});
-
-app.get('/api/languages', (req, res) => {
-  res.json(LANGUAGE_NAMES);
 });
 
 const PORT = process.env.PORT || 3000;
