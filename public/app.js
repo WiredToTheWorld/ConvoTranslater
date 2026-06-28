@@ -22,8 +22,11 @@ const autoStart         = document.getElementById('auto-start');
 const autoRunning       = document.getElementById('auto-running');
 const turnA             = document.getElementById('turn-a');
 const turnB             = document.getElementById('turn-b');
-const vibeStandardBtn   = document.getElementById('vibe-standard');
-const vibeFlirtyBtn     = document.getElementById('vibe-flirty');
+const vibeButtons       = {
+  standard: document.getElementById('vibe-standard'),
+  flirty:   document.getElementById('vibe-flirty'),
+  slang:    document.getElementById('vibe-slang'),
+};
 
 // ── Languages ────────────────────────────────────────────────────────────────
 // code → { name, speech: BCP-47 tag for recognition/TTS, flag: ISO 3166-1
@@ -130,11 +133,13 @@ modeAutoBtn.addEventListener('click', () => switchMode('auto'));
 // ── Vibe toggle ───────────────────────────────────────────────────────────────
 function switchVibe(newVibe) {
   vibe = newVibe;
-  vibeStandardBtn.classList.toggle('toggle-active', vibe === 'standard');
-  vibeFlirtyBtn.classList.toggle('toggle-active', vibe === 'flirty');
+  for (const [key, btn] of Object.entries(vibeButtons)) {
+    btn.classList.toggle('toggle-active', key === vibe);
+  }
 }
-vibeStandardBtn.addEventListener('click', () => switchVibe('standard'));
-vibeFlirtyBtn.addEventListener('click', () => switchVibe('flirty'));
+for (const [key, btn] of Object.entries(vibeButtons)) {
+  btn.addEventListener('click', () => switchVibe(key));
+}
 
 // ── Conversation rendering ────────────────────────────────────────────────────
 function showEmpty() {
